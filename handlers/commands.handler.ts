@@ -1,8 +1,16 @@
-import { ChatInputCommandInteraction, ContextMenuCommandInteraction, Message } from "discord.js";
+import { ChatInputCommandInteraction, ContextMenuCommandInteraction, Message, REST, Routes } from "discord.js";
 import fs from "fs";
-import { bot, Client, ICommand } from "..";
+import { bot, Client, ICommand, ISlashCommand } from "..";
+import Discord from "discord.js";
 
 export default class {
+    private REST = new REST({ version: "10" }).setToken(bot.token as string);
+    slashCommands: Array<ISlashCommand> = [];
+    ApplicationCommands: Array<Discord.ApplicationCommandDataResolvable> = [];
+    commands: Array<ICommand> = [];
+    aliases: Discord.Collection<string, string> = new Discord.Collection();
+
+
     constructor () {
         bot.on('messageCreate', 
             async (message: Message) => {
@@ -17,54 +25,66 @@ export default class {
 
     public async init (bot: Client) {
         fs.readdirSync("./commands/Message").forEach(async dir => {
-            const commands = fs.readdirSync(`./commands/Message/${dir}`).filter(file => file.endsWith('.js'));
+            const commands = fs.readdirSync(`./commands/Message/${dir}`).filter(file => file.endsWith('.ts'));
     
             for ( const command of commands ) {
-                const pull = (await import(`../commands/Message/${dir}/${command}`))?.default;
+                const pull = (await import(`../commands/Message/${dir}/${command}`))?.default as ICommand;
                 if ( !pull?.data || !pull?.data?.name ) return;
-    
-                bot.commands.set(pull.data.name, pull);
+
+                this.commands.push(pull);
                 if ( pull.data?.aliases && Array.isArray(pull.data.aliases) )
-                    pull.data.aliases.forEach((alias: string) => bot.aliases.set(alias, pull.data.name));
+                    pull.data.aliases.forEach((alias: string) => this.aliases.set(alias, pull.data.name));
             };
         });
     
         fs.readdirSync("./commands/Slash").forEach(async dir => {
-            const commands = fs.readdirSync(`./commands/Slash/${dir}`).filter(file => file.endsWith('.js'));
+            const commands = fs.readdirSync(`./commands/Slash/${dir}`).filter(file => file.endsWith('.ts'));
     
             for ( const command of commands ) {
                 const pull = (await import(`../commands/Slash/${dir}/${command}`))?.default;
                 if ( !pull?.data || !pull?.data?.name ) return;
     
-                bot.slashCommands.set(pull.data.name, pull);
-                bot.ApplicationCommands.push(pull.data);
+                this.slashCommands.push(pull);
+                this.ApplicationCommands.push(pull.data);
             };
-        })
+        });
+
+        bot.on('ready', async () => {
+            await this.REST.put(Routes.applicationGuildCommands(bot.user!.id as string, "850132910865645609"), {
+                body: this.ApplicationCommands
+            })
+                .then(() => console.log('Successfully registered application commands.'))
+                .catch(console.error)
+        }) 
     }
 
     private async handleCommand(options: { interaction?: ChatInputCommandInteraction | ContextMenuCommandInteraction, message?: Message }) {
         var { message, interaction } = options;
-        if ( interaction ) {
-            var { commandName, guild, user, member, deferred } = interaction;
-            var command = bot.slashCommands.get(commandName);
-            if ( !deferred ) 
-                await interaction.deferReply({ ephemeral: false }).catch(() => {});
-            if ( !command ) 
-                return await interaction.followUp({ content: "Invaild Command" });
-            
-            await command.invoke({ bot, interaction, command, guild, user });
-        } else if ( message ) {
-            if ( message.author.bot || !message.content.startsWith('.') ) return;
-            let { author, guild, member } = message;
-
-            let prefix = "."
-            const args = message.content.slice(prefix.length).trim().split(/ + /g);
-            let cmd = args.shift()?.toLowerCase();
-
-            let command = bot.commands.get(cmd as string) as ICommand;
-            if (!command) return;
-
-            await command.invoke({ bot, message, command, guild, author, member });
-        };
+        try {
+            if ( interaction ) {
+                var { commandName, guild, user, member, deferred } = interaction;
+                var command = this.slashCommands.find((cmd: any) => cmd.data.name === commandName);
+                if ( !deferred ) 
+                    await interaction.deferReply({ ephemeral: false }).catch(() => {});
+                if ( !command ) 
+                    return await interaction.followUp({ content: "Invaild Command" });
+                
+                await command.invoke({ bot, interaction, command, guild, user });
+            } else if ( message ) {
+                if ( message.author.bot || !message.content.startsWith('.') ) return;
+                let { author, guild, member } = message;
+    
+                let prefix = "."
+                const args = message.content.slice(prefix.length).trim().split(/ + /g);
+                let cmd = args.shift()?.toLowerCase();
+    
+                let command = this.commands.find((c: any) => c.data.name === cmd) as ICommand;
+                if (!command) return;
+    
+                await command.invoke({ bot, message, command, guild, author, member });
+            };
+        } catch(err: any) {
+            console.error(err.stack);
+        } 
    } 
 }

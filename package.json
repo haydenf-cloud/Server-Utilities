@@ -5,7 +5,8 @@
   "license": "MIT",
   "scripts": {
     "start": "ts-node .",
-    "dev": "ts-node-dev --respawn --transpileOnly ."
+    "dev": "ts-node-dev --respawn --transpile-only .",
+    "build": "tsc --build"
   },
   "dependencies": {
     "@types/mongoose": "^5.11.97",
