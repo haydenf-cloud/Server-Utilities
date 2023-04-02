@@ -2,6 +2,7 @@ import { ChatInputCommandInteraction, ContextMenuCommandInteraction, Message, RE
 import fs from "fs";
 import { bot, Client, ICommand, ISlashCommand } from "..";
 import Discord from "discord.js";
+import SavedMember, { MemberDocument } from "../database/Member";
 
 export default class {
     private REST = new REST({ version: "10" }).setToken(bot.token as string);
@@ -14,6 +15,10 @@ export default class {
     constructor () {
         bot.on('messageCreate', 
             async (message: Message) => {
+                if ( !message.author.bot ) {
+                    let savedMember = SavedMember.findOne({ discordId: message.author.id }) ||
+                        await SavedMember.create({ discordId:  message.author.id });
+                };
                 await this.handleCommand({ message })
             });
         bot.on('interactionCreate', 

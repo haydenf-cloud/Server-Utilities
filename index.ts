@@ -3,6 +3,7 @@ dotenv.config();
 
 import Discord from "discord.js";
 import MessageCommandBuilder from "./builders/MessageCommand";
+import mongoose from "mongoose";
 
 export interface ICommand {
   data: MessageCommandBuilder;
@@ -34,5 +35,9 @@ export const bot = new Client();
     let handler = (await import(`./handlers/${file}`))?.default;
     new handler().init(bot);
 });
+
+mongoose.connect(process.env["MONGO_URI"] as string, {})
+  .then(() => console.log("Mongoose Has Successfully Connected"))
+  .catch(console.error);
 
 bot.login(process.env["BOT_TOKEN"]);
